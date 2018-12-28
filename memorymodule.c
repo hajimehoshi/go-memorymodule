@@ -64,7 +64,7 @@ BOOL checkSize(size_t size, size_t expected);
 static BOOL
 CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_headers, PMEMORYMODULE module)
 {
-    unsigned char *codeBase = module->codeBase;
+    unsigned char* codeBase = module->codeBase;
     PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(module->headers);
     for (int i=0; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
         if (section->SizeOfRawData == 0) {
@@ -72,20 +72,19 @@ CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_heade
             // uninitialized data
             int section_size = old_headers->OptionalHeader.SectionAlignment;
             if (section_size > 0) {
-                unsigned char* dest = (unsigned char *)VirtualAlloc(codeBase + section->VirtualAddress,
+                if (!VirtualAlloc(codeBase + section->VirtualAddress,
                     section_size,
                     MEM_COMMIT,
-                    PAGE_READWRITE);
-                if (dest == NULL) {
+                    PAGE_READWRITE)) {
                     return FALSE;
                 }
 
                 // Always use position from file to support alignments smaller
                 // than page size (allocation above will align to page size).
-                dest = codeBase + section->VirtualAddress;
+                unsigned char* dest = codeBase + section->VirtualAddress;
                 // NOTE: On 64bit systems we truncate to 32bit here but expand
                 // again later when "PhysicalAddress" is used.
-                section->Misc.PhysicalAddress = (DWORD) ((uintptr_t) dest & 0xffffffff);
+                section->Misc.PhysicalAddress = (DWORD) ((uintptr_t)(dest) & 0xffffffff);
                 memset(dest, 0, section_size);
             }
 
@@ -98,17 +97,16 @@ CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_heade
         }
 
         // commit memory block and copy data from dll
-        unsigned char* dest = (unsigned char *)VirtualAlloc(codeBase + section->VirtualAddress,
+        if (!VirtualAlloc(codeBase + section->VirtualAddress,
                             section->SizeOfRawData,
                             MEM_COMMIT,
-                            PAGE_READWRITE);
-        if (dest == NULL) {
+                            PAGE_READWRITE)) {
             return FALSE;
         }
 
         // Always use position from file to support alignments smaller
         // than page size (allocation above will align to page size).
-        dest = codeBase + section->VirtualAddress;
+        unsigned char* dest = codeBase + section->VirtualAddress;
         memcpy(dest, data + section->PointerToRawData, section->SizeOfRawData);
         // NOTE: On 64bit systems we truncate to 32bit here but expand
         // again later when "PhysicalAddress" is used.
