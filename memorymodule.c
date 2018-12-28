@@ -121,9 +121,8 @@ FreePointerList(POINTER_LIST *head, CustomFreeFunc freeMemory)
 {
     POINTER_LIST *node = head;
     while (node) {
-        POINTER_LIST *next;
         freeMemory(node->address, 0, MEM_RELEASE);
-        next = node->next;
+        POINTER_LIST* next = node->next;
         free(node);
         node = next;
     }
@@ -143,17 +142,15 @@ CheckSize(size_t size, size_t expected) {
 static BOOL
 CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_headers, PMEMORYMODULE module)
 {
-    int i, section_size;
     unsigned char *codeBase = module->codeBase;
-    unsigned char *dest;
     PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(module->headers);
-    for (i=0; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
+    for (int i=0; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
         if (section->SizeOfRawData == 0) {
             // section doesn't contain data in the dll itself, but may define
             // uninitialized data
-            section_size = old_headers->OptionalHeader.SectionAlignment;
+            int section_size = old_headers->OptionalHeader.SectionAlignment;
             if (section_size > 0) {
-                dest = (unsigned char *)VirtualAlloc(codeBase + section->VirtualAddress,
+                unsigned char* dest = (unsigned char *)VirtualAlloc(codeBase + section->VirtualAddress,
                     section_size,
                     MEM_COMMIT,
                     PAGE_READWRITE);
@@ -179,7 +176,7 @@ CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_heade
         }
 
         // commit memory block and copy data from dll
-        dest = (unsigned char *)VirtualAlloc(codeBase + section->VirtualAddress,
+        unsigned char* dest = (unsigned char *)VirtualAlloc(codeBase + section->VirtualAddress,
                             section->SizeOfRawData,
                             MEM_COMMIT,
                             PAGE_READWRITE);
@@ -227,11 +224,6 @@ GetRealSectionSize(PMEMORYMODULE module, PIMAGE_SECTION_HEADER section) {
 
 static BOOL
 FinalizeSection(PMEMORYMODULE module, PSECTIONFINALIZEDATA sectionData) {
-    DWORD protect, oldProtect;
-    BOOL executable;
-    BOOL readable;
-    BOOL writeable;
-
     if (sectionData->size == 0) {
         return TRUE;
     }
@@ -250,15 +242,16 @@ FinalizeSection(PMEMORYMODULE module, PSECTIONFINALIZEDATA sectionData) {
     }
 
     // determine protection flags based on characteristics
-    executable = (sectionData->characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
-    readable =   (sectionData->characteristics & IMAGE_SCN_MEM_READ) != 0;
-    writeable =  (sectionData->characteristics & IMAGE_SCN_MEM_WRITE) != 0;
-    protect = ProtectionFlags[executable][readable][writeable];
+    BOOL executable = (sectionData->characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
+    BOOL readable =   (sectionData->characteristics & IMAGE_SCN_MEM_READ) != 0;
+    BOOL writeable =  (sectionData->characteristics & IMAGE_SCN_MEM_WRITE) != 0;
+    DWORD protect = ProtectionFlags[executable][readable][writeable];
     if (sectionData->characteristics & IMAGE_SCN_MEM_NOT_CACHED) {
         protect |= PAGE_NOCACHE;
     }
 
     // change memory access flags
+    DWORD oldProtect;
     if (VirtualProtect(sectionData->address, sectionData->size, protect, &oldProtect) == 0) {
         OutputLastError("Error protecting memory page");
         return FALSE;
@@ -270,7 +263,6 @@ FinalizeSection(PMEMORYMODULE module, PSECTIONFINALIZEDATA sectionData) {
 static BOOL
 FinalizeSections(PMEMORYMODULE module)
 {
-    int i;
     PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(module->headers);
 #ifdef _WIN64
     // "PhysicalAddress" might have been truncated to 32bit above, expand to
@@ -288,7 +280,7 @@ FinalizeSections(PMEMORYMODULE module)
     section++;
 
     // loop through all sections and change access flags
-    for (i=1; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
+    for (int i=1; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
         LPVOID sectionAddress = (LPVOID)((uintptr_t)section->Misc.PhysicalAddress | imageOffset);
         LPVOID alignedAddress = AlignAddressDown(sectionAddress, module->pageSize);
         SIZE_T sectionSize = GetRealSectionSize(module, section);
@@ -325,16 +317,14 @@ static BOOL
 ExecuteTLS(PMEMORYMODULE module)
 {
     unsigned char *codeBase = module->codeBase;
-    PIMAGE_TLS_DIRECTORY tls;
-    PIMAGE_TLS_CALLBACK* callback;
 
     PIMAGE_DATA_DIRECTORY directory = GET_HEADER_DICTIONARY(module, IMAGE_DIRECTORY_ENTRY_TLS);
     if (directory->VirtualAddress == 0) {
         return TRUE;
     }
 
-    tls = (PIMAGE_TLS_DIRECTORY) (codeBase + directory->VirtualAddress);
-    callback = (PIMAGE_TLS_CALLBACK *) tls->AddressOfCallBacks;
+    PIMAGE_TLS_DIRECTORY tls = (PIMAGE_TLS_DIRECTORY) (codeBase + directory->VirtualAddress);
+    PIMAGE_TLS_CALLBACK* callback = (PIMAGE_TLS_CALLBACK *) tls->AddressOfCallBacks;
     if (callback) {
         while (*callback) {
             (*callback)((LPVOID) codeBase, DLL_PROCESS_ATTACH, NULL);
@@ -348,14 +338,13 @@ static BOOL
 PerformBaseRelocation(PMEMORYMODULE module, ptrdiff_t delta)
 {
     unsigned char *codeBase = module->codeBase;
-    PIMAGE_BASE_RELOCATION relocation;
 
     PIMAGE_DATA_DIRECTORY directory = GET_HEADER_DICTIONARY(module, IMAGE_DIRECTORY_ENTRY_BASERELOC);
     if (directory->Size == 0) {
         return (delta == 0);
     }
 
-    relocation = (PIMAGE_BASE_RELOCATION) (codeBase + directory->VirtualAddress);
+    PIMAGE_BASE_RELOCATION relocation = (PIMAGE_BASE_RELOCATION) (codeBase + directory->VirtualAddress);
     for (; relocation->VirtualAddress > 0; ) {
         DWORD i;
         unsigned char *dest = codeBase + relocation->VirtualAddress;
@@ -405,7 +394,6 @@ static BOOL
 BuildImportTable(PMEMORYMODULE module)
 {
     unsigned char *codeBase = module->codeBase;
-    PIMAGE_IMPORT_DESCRIPTOR importDesc;
     BOOL result = TRUE;
 
     PIMAGE_DATA_DIRECTORY directory = GET_HEADER_DICTIONARY(module, IMAGE_DIRECTORY_ENTRY_IMPORT);
@@ -413,7 +401,7 @@ BuildImportTable(PMEMORYMODULE module)
         return TRUE;
     }
 
-    importDesc = (PIMAGE_IMPORT_DESCRIPTOR) (codeBase + directory->VirtualAddress);
+    PIMAGE_IMPORT_DESCRIPTOR importDesc = (PIMAGE_IMPORT_DESCRIPTOR) (codeBase + directory->VirtualAddress);
     for (; !IsBadReadPtr(importDesc, sizeof(IMAGE_IMPORT_DESCRIPTOR)) && importDesc->Name; importDesc++) {
         uintptr_t *thunkRef;
         FARPROC *funcRef;
@@ -469,16 +457,6 @@ BuildImportTable(PMEMORYMODULE module)
 HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
 {
     PMEMORYMODULE result = NULL;
-    PIMAGE_DOS_HEADER dos_header;
-    PIMAGE_NT_HEADERS old_header;
-    unsigned char *code, *headers;
-    ptrdiff_t locationDelta;
-    SYSTEM_INFO sysInfo;
-    PIMAGE_SECTION_HEADER section;
-    DWORD i;
-    size_t optionalSectionSize;
-    size_t lastSectionEnd = 0;
-    size_t alignedImageSize;
 #ifdef _WIN64
     POINTER_LIST *blockedMemory = NULL;
 #endif
@@ -486,7 +464,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     if (!CheckSize(size, sizeof(IMAGE_DOS_HEADER))) {
         return NULL;
     }
-    dos_header = (PIMAGE_DOS_HEADER)data;
+    PIMAGE_DOS_HEADER dos_header = (PIMAGE_DOS_HEADER)data;
     if (dos_header->e_magic != IMAGE_DOS_SIGNATURE) {
         SetLastError(ERROR_BAD_EXE_FORMAT);
         return NULL;
@@ -495,7 +473,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     if (!CheckSize(size, dos_header->e_lfanew + sizeof(IMAGE_NT_HEADERS))) {
         return NULL;
     }
-    old_header = (PIMAGE_NT_HEADERS)&((const unsigned char *)(data))[dos_header->e_lfanew];
+    PIMAGE_NT_HEADERS old_header = (PIMAGE_NT_HEADERS)&((const unsigned char *)(data))[dos_header->e_lfanew];
     if (old_header->Signature != IMAGE_NT_SIGNATURE) {
         SetLastError(ERROR_BAD_EXE_FORMAT);
         return NULL;
@@ -512,9 +490,10 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
         return NULL;
     }
 
-    section = IMAGE_FIRST_SECTION(old_header);
-    optionalSectionSize = old_header->OptionalHeader.SectionAlignment;
-    for (i=0; i<old_header->FileHeader.NumberOfSections; i++, section++) {
+    PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(old_header);
+    size_t optionalSectionSize = old_header->OptionalHeader.SectionAlignment;
+    size_t lastSectionEnd = 0;
+    for (DWORD i=0; i<old_header->FileHeader.NumberOfSections; i++, section++) {
         size_t endOfSection;
         if (section->SizeOfRawData == 0) {
             // Section without data in the DLL
@@ -528,8 +507,9 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
         }
     }
 
+    SYSTEM_INFO sysInfo;
     GetNativeSystemInfo(&sysInfo);
-    alignedImageSize = AlignValueUp(old_header->OptionalHeader.SizeOfImage, sysInfo.dwPageSize);
+    size_t alignedImageSize = AlignValueUp(old_header->OptionalHeader.SizeOfImage, sysInfo.dwPageSize);
     if (alignedImageSize != AlignValueUp(lastSectionEnd, sysInfo.dwPageSize)) {
         SetLastError(ERROR_BAD_EXE_FORMAT);
         return NULL;
@@ -538,7 +518,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     // reserve memory for image of library
     // XXX: is it correct to commit the complete memory region at once?
     //      calling DllEntry raises an exception if we don't...
-    code = (unsigned char *)VirtualAlloc((LPVOID)(old_header->OptionalHeader.ImageBase),
+    unsigned char* code = (unsigned char *)VirtualAlloc((LPVOID)(old_header->OptionalHeader.ImageBase),
         alignedImageSize,
         MEM_RESERVE | MEM_COMMIT,
         PAGE_READWRITE);
@@ -604,7 +584,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     }
 
     // commit memory for headers
-    headers = (unsigned char *)VirtualAlloc(code,
+    unsigned char* headers = (unsigned char *)VirtualAlloc(code,
         old_header->OptionalHeader.SizeOfHeaders,
         MEM_COMMIT,
         PAGE_READWRITE);
@@ -622,7 +602,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     }
 
     // adjust base address of imported data
-    locationDelta = (ptrdiff_t)(result->headers->OptionalHeader.ImageBase - old_header->OptionalHeader.ImageBase);
+    ptrdiff_t locationDelta = (ptrdiff_t)(result->headers->OptionalHeader.ImageBase - old_header->OptionalHeader.ImageBase);
     if (locationDelta != 0) {
         result->isRelocated = PerformBaseRelocation(result, locationDelta);
     } else {
@@ -690,7 +670,6 @@ FARPROC MemoryGetProcAddress(HMEMORYMODULE mod, LPCSTR name)
     PMEMORYMODULE module = (PMEMORYMODULE)mod;
     unsigned char *codeBase = module->codeBase;
     DWORD idx = 0;
-    PIMAGE_EXPORT_DIRECTORY exports;
     PIMAGE_DATA_DIRECTORY directory = GET_HEADER_DICTIONARY(module, IMAGE_DIRECTORY_ENTRY_EXPORT);
     if (directory->Size == 0) {
         // no export table found
@@ -698,7 +677,7 @@ FARPROC MemoryGetProcAddress(HMEMORYMODULE mod, LPCSTR name)
         return NULL;
     }
 
-    exports = (PIMAGE_EXPORT_DIRECTORY) (codeBase + directory->VirtualAddress);
+    PIMAGE_EXPORT_DIRECTORY exports = (PIMAGE_EXPORT_DIRECTORY) (codeBase + directory->VirtualAddress);
     if (exports->NumberOfNames == 0 || exports->NumberOfFunctions == 0) {
         // DLL doesn't export anything
         SetLastError(ERROR_PROC_NOT_FOUND);
@@ -721,7 +700,6 @@ FARPROC MemoryGetProcAddress(HMEMORYMODULE mod, LPCSTR name)
 
         // Lazily build name table and sort it by names
         if (!module->nameExportsTable) {
-            DWORD i;
             DWORD *nameRef = (DWORD *) (codeBase + exports->AddressOfNames);
             WORD *ordinal = (WORD *) (codeBase + exports->AddressOfNameOrdinals);
             struct ExportNameEntry *entry = (struct ExportNameEntry*) malloc(exports->NumberOfNames * sizeof(struct ExportNameEntry));
@@ -730,7 +708,7 @@ FARPROC MemoryGetProcAddress(HMEMORYMODULE mod, LPCSTR name)
                 SetLastError(ERROR_OUTOFMEMORY);
                 return NULL;
             }
-            for (i=0; i<exports->NumberOfNames; i++, nameRef++, ordinal++, entry++) {
+            for (DWORD i=0; i<exports->NumberOfNames; i++, nameRef++, ordinal++, entry++) {
                 entry->name = (const char *) (codeBase + (*nameRef));
                 entry->idx = *ordinal;
             }
