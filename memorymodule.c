@@ -50,31 +50,10 @@
 
 #define GET_HEADER_DICTIONARY(module, idx)  &(module)->headers->OptionalHeader.DataDirectory[idx]
 
-static inline uintptr_t
-AlignValueDown(uintptr_t value, uintptr_t alignment) {
-    return value & ~(alignment - 1);
-}
-
-static inline LPVOID
-AlignAddressDown(LPVOID address, uintptr_t alignment) {
-    return (LPVOID) AlignValueDown((uintptr_t) address, alignment);
-}
-
-static inline size_t
-AlignValueUp(size_t value, size_t alignment) {
-    return (value + alignment - 1) & ~(alignment - 1);
-}
-
-static inline void*
-OffsetPointer(void* data, ptrdiff_t offset) {
-    return (void*) ((uintptr_t) data + offset);
-}
-
-static inline void
-OutputLastError(const char *msg)
-{
-    UNREFERENCED_PARAMETER(msg);
-}
+uintptr_t alignValueDown(uintptr_t value, uintptr_t alignment);
+void* alignAddressDown(void* address, uintptr_t alignment);
+size_t alignValueUp(size_t value, size_t alignment);
+void* offsetPointer(void* data, ptrdiff_t offset);
 
 #ifdef _WIN64
 static void
@@ -214,7 +193,7 @@ FinalizeSection(PMEMORYMODULE module, PSECTIONFINALIZEDATA sectionData) {
     // change memory access flags
     DWORD oldProtect;
     if (VirtualProtect(sectionData->address, sectionData->size, protect, &oldProtect) == 0) {
-        OutputLastError("Error protecting memory page");
+        // OutputLastError("Error protecting memory page");
         return FALSE;
     }
 
@@ -234,7 +213,7 @@ FinalizeSections(PMEMORYMODULE module)
 #endif
     SECTIONFINALIZEDATA sectionData;
     sectionData.address = (LPVOID)((uintptr_t)section->Misc.PhysicalAddress | imageOffset);
-    sectionData.alignedAddress = AlignAddressDown(sectionData.address, module->pageSize);
+    sectionData.alignedAddress = alignAddressDown(sectionData.address, module->pageSize);
     sectionData.size = GetRealSectionSize(module, section);
     sectionData.characteristics = section->Characteristics;
     sectionData.last = FALSE;
@@ -243,7 +222,7 @@ FinalizeSections(PMEMORYMODULE module)
     // loop through all sections and change access flags
     for (int i=1; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
         LPVOID sectionAddress = (LPVOID)((uintptr_t)section->Misc.PhysicalAddress | imageOffset);
-        LPVOID alignedAddress = AlignAddressDown(sectionAddress, module->pageSize);
+        LPVOID alignedAddress = alignAddressDown(sectionAddress, module->pageSize);
         SIZE_T sectionSize = GetRealSectionSize(module, section);
         // Combine access flags of all sections that share a page
         // TODO(fancycode): We currently share flags of a trailing large section
@@ -309,7 +288,7 @@ PerformBaseRelocation(PMEMORYMODULE module, ptrdiff_t delta)
     for (; relocation->VirtualAddress > 0; ) {
         DWORD i;
         unsigned char *dest = codeBase + relocation->VirtualAddress;
-        unsigned short *relInfo = (unsigned short*) OffsetPointer(relocation, IMAGE_SIZEOF_BASE_RELOCATION);
+        unsigned short *relInfo = (unsigned short*) offsetPointer(relocation, IMAGE_SIZEOF_BASE_RELOCATION);
         for (i=0; i<((relocation->SizeOfBlock-IMAGE_SIZEOF_BASE_RELOCATION) / 2); i++, relInfo++) {
             // the upper 4 bits define the type of relocation
             int type = *relInfo >> 12;
@@ -346,7 +325,7 @@ PerformBaseRelocation(PMEMORYMODULE module, ptrdiff_t delta)
         }
 
         // advance to next relocation block
-        relocation = (PIMAGE_BASE_RELOCATION) OffsetPointer(relocation, relocation->SizeOfBlock);
+        relocation = (PIMAGE_BASE_RELOCATION) offsetPointer(relocation, relocation->SizeOfBlock);
     }
     return TRUE;
 }
@@ -470,8 +449,8 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
 
     SYSTEM_INFO sysInfo;
     GetNativeSystemInfo(&sysInfo);
-    size_t alignedImageSize = AlignValueUp(old_header->OptionalHeader.SizeOfImage, sysInfo.dwPageSize);
-    if (alignedImageSize != AlignValueUp(lastSectionEnd, sysInfo.dwPageSize)) {
+    size_t alignedImageSize = alignValueUp(old_header->OptionalHeader.SizeOfImage, sysInfo.dwPageSize);
+    if (alignedImageSize != alignValueUp(lastSectionEnd, sysInfo.dwPageSize)) {
         SetLastError(ERROR_BAD_EXE_FORMAT);
         return NULL;
     }

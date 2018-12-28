@@ -20,3 +20,23 @@ func MemoryGetProcAddress(module HMEMORYMODULE, name string) uintptr {
 	defer C.free(unsafe.Pointer(n))
 	return uintptr(unsafe.Pointer(C.MemoryGetProcAddress(C.HMEMORYMODULE(module), n)))
 }
+
+//export alignValueDown
+func alignValueDown(value uintptr, alignment uintptr) uintptr {
+	return value & ^(alignment - 1)
+}
+
+//export alignAddressDown
+func alignAddressDown(value unsafe.Pointer, alignment uintptr) unsafe.Pointer {
+	return unsafe.Pointer(alignValueDown(uintptr(value), alignment))
+}
+
+//export alignValueUp
+func alignValueUp(value C.size_t, alignment C.size_t) C.size_t {
+	return (value + alignment - 1) & ^(alignment - 1)
+}
+
+//export offsetPointer
+func offsetPointer(data unsafe.Pointer, offset uintptr) unsafe.Pointer {
+	return unsafe.Pointer(uintptr(data) + offset)
+}
