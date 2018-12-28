@@ -59,15 +59,7 @@ void* offsetPointer(void* data, ptrdiff_t offset);
 void freePointerList(POINTER_LIST *head);
 #endif
 
-static BOOL
-CheckSize(size_t size, size_t expected) {
-    if (size < expected) {
-        SetLastError(ERROR_INVALID_DATA);
-        return FALSE;
-    }
-
-    return TRUE;
-}
+BOOL checkSize(size_t size, size_t expected);
 
 static BOOL
 CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_headers, PMEMORYMODULE module)
@@ -101,7 +93,7 @@ CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_heade
             continue;
         }
 
-        if (!CheckSize(size, section->PointerToRawData + section->SizeOfRawData)) {
+        if (!checkSize(size, section->PointerToRawData + section->SizeOfRawData)) {
             return FALSE;
         }
 
@@ -391,7 +383,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     POINTER_LIST *blockedMemory = NULL;
 #endif
 
-    if (!CheckSize(size, sizeof(IMAGE_DOS_HEADER))) {
+    if (!checkSize(size, sizeof(IMAGE_DOS_HEADER))) {
         return NULL;
     }
     PIMAGE_DOS_HEADER dos_header = (PIMAGE_DOS_HEADER)data;
@@ -400,7 +392,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
         return NULL;
     }
 
-    if (!CheckSize(size, dos_header->e_lfanew + sizeof(IMAGE_NT_HEADERS))) {
+    if (!checkSize(size, dos_header->e_lfanew + sizeof(IMAGE_NT_HEADERS))) {
         return NULL;
     }
     PIMAGE_NT_HEADERS old_header = (PIMAGE_NT_HEADERS)&((const unsigned char *)(data))[dos_header->e_lfanew];
@@ -509,7 +501,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     result->blockedMemory = blockedMemory;
 #endif
 
-    if (!CheckSize(size, old_header->OptionalHeader.SizeOfHeaders)) {
+    if (!checkSize(size, old_header->OptionalHeader.SizeOfHeaders)) {
         goto error;
     }
 

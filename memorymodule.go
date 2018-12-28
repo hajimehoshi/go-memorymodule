@@ -51,3 +51,12 @@ func freePointerList(head *C.POINTER_LIST) {
 		node = next
 	}
 }
+
+//export checkSize
+func checkSize(size, expected C.size_t) C.BOOL {
+	if size < expected {
+		C.SetLastError(C.ERROR_INVALID_DATA)
+		return C.FALSE
+	}
+	return C.TRUE
+}
