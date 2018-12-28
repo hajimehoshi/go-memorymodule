@@ -234,27 +234,6 @@ FinalizeSections(MEMORYMODULE* module)
 }
 
 static BOOL
-ExecuteTLS(MEMORYMODULE* module)
-{
-    unsigned char *codeBase = module->codeBase;
-
-    IMAGE_DATA_DIRECTORY* directory = GET_HEADER_DICTIONARY(module, IMAGE_DIRECTORY_ENTRY_TLS);
-    if (directory->VirtualAddress == 0) {
-        return TRUE;
-    }
-
-    IMAGE_TLS_DIRECTORY* tls = (IMAGE_TLS_DIRECTORY*) (codeBase + directory->VirtualAddress);
-    PIMAGE_TLS_CALLBACK* callback = (PIMAGE_TLS_CALLBACK*) tls->AddressOfCallBacks;
-    if (callback) {
-        while (*callback) {
-            (*callback)((void*) codeBase, DLL_PROCESS_ATTACH, NULL);
-            callback++;
-        }
-    }
-    return TRUE;
-}
-
-static BOOL
 PerformBaseRelocation(MEMORYMODULE* module, ptrdiff_t delta)
 {
     unsigned char *codeBase = module->codeBase;
@@ -537,11 +516,6 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     // mark memory pages depending on section headers and release
     // sections that are marked as "discardable"
     if (!FinalizeSections(result)) {
-        goto error;
-    }
-
-    // TLS callbacks are executed BEFORE the main loading
-    if (!ExecuteTLS(result)) {
         goto error;
     }
 
