@@ -60,3 +60,10 @@ func checkSize(size, expected C.size_t) C.BOOL {
 	}
 	return C.TRUE
 }
+
+//export imageFirstSection
+func imageFirstSection(ntheader *C.IMAGE_NT_HEADERS) *C.IMAGE_SECTION_HEADER {
+	return (*C.IMAGE_SECTION_HEADER)(unsafe.Pointer((uintptr(unsafe.Pointer(ntheader)) +
+		unsafe.Offsetof(ntheader.OptionalHeader) +
+		uintptr(ntheader.FileHeader.SizeOfOptionalHeader))))
+}

@@ -61,11 +61,13 @@ void freePointerList(POINTER_LIST *head);
 
 BOOL checkSize(size_t size, size_t expected);
 
+IMAGE_SECTION_HEADER* imageFirstSection(IMAGE_NT_HEADERS*);
+
 static BOOL
 CopySections(const unsigned char *data, size_t size, IMAGE_NT_HEADERS* old_headers, MEMORYMODULE* module)
 {
     unsigned char* codeBase = module->codeBase;
-    IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(module->headers);
+    IMAGE_SECTION_HEADER* section = imageFirstSection(module->headers);
     for (int i=0; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
         if (section->SizeOfRawData == 0) {
             // section doesn't contain data in the dll itself, but may define
@@ -183,7 +185,7 @@ FinalizeSection(MEMORYMODULE* module, PSECTIONFINALIZEDATA sectionData) {
 static BOOL
 FinalizeSections(MEMORYMODULE* module)
 {
-    IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(module->headers);
+    IMAGE_SECTION_HEADER* section = imageFirstSection(module->headers);
 #ifdef _WIN64
     // "PhysicalAddress" might have been truncated to 32bit above, expand to
     // 64bits again.
@@ -389,7 +391,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
         return NULL;
     }
 
-    IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(old_header);
+    IMAGE_SECTION_HEADER* section = imageFirstSection(old_header);
     size_t optionalSectionSize = old_header->OptionalHeader.SectionAlignment;
     size_t lastSectionEnd = 0;
     for (DWORD i=0; i<old_header->FileHeader.NumberOfSections; i++, section++) {
