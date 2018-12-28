@@ -151,4 +151,54 @@ void MemoryDefaultFreeLibrary(HCUSTOMMODULE);
 }
 #endif
 
+#ifndef IMAGE_SIZEOF_BASE_RELOCATION
+// Vista SDKs no longer define IMAGE_SIZEOF_BASE_RELOCATION!?
+#define IMAGE_SIZEOF_BASE_RELOCATION (sizeof(IMAGE_BASE_RELOCATION))
+#endif
+
+#ifdef _WIN64
+#define HOST_MACHINE IMAGE_FILE_MACHINE_AMD64
+#else
+#define HOST_MACHINE IMAGE_FILE_MACHINE_I386
+#endif
+
+struct ExportNameEntry {
+    LPCSTR name;
+    WORD idx;
+};
+
+typedef BOOL (WINAPI *DllEntryProc)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved);
+typedef int (WINAPI *ExeEntryProc)(void);
+
+#ifdef _WIN64
+typedef struct POINTER_LIST {
+    struct POINTER_LIST *next;
+    void *address;
+} POINTER_LIST;
+#endif
+
+typedef struct {
+    PIMAGE_NT_HEADERS headers;
+    unsigned char *codeBase;
+    HCUSTOMMODULE *modules;
+    int numModules;
+    BOOL initialized;
+    BOOL isDLL;
+    BOOL isRelocated;
+    struct ExportNameEntry *nameExportsTable;
+    ExeEntryProc exeEntry;
+    DWORD pageSize;
+#ifdef _WIN64
+    POINTER_LIST *blockedMemory;
+#endif
+} MEMORYMODULE, *PMEMORYMODULE;
+
+typedef struct {
+    LPVOID address;
+    LPVOID alignedAddress;
+    SIZE_T size;
+    DWORD characteristics;
+    BOOL last;
+} SECTIONFINALIZEDATA, *PSECTIONFINALIZEDATA;
+
 #endif  // __MEMORY_MODULE_HEADER
