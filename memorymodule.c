@@ -56,17 +56,7 @@ size_t alignValueUp(size_t value, size_t alignment);
 void* offsetPointer(void* data, ptrdiff_t offset);
 
 #ifdef _WIN64
-static void
-FreePointerList(POINTER_LIST *head)
-{
-    POINTER_LIST *node = head;
-    while (node) {
-        VirtualFree(node->address, 0, MEM_RELEASE);
-        POINTER_LIST* next = node->next;
-        free(node);
-        node = next;
-    }
-}
+void freePointerList(POINTER_LIST *head);
 #endif
 
 static BOOL
@@ -481,7 +471,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
         POINTER_LIST *node = (POINTER_LIST*) malloc(sizeof(POINTER_LIST));
         if (!node) {
             VirtualFree(code, 0, MEM_RELEASE);
-            FreePointerList(blockedMemory);
+            freePointerList(blockedMemory);
             SetLastError(ERROR_OUTOFMEMORY);
             return NULL;
         }
@@ -495,7 +485,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
             MEM_RESERVE | MEM_COMMIT,
             PAGE_READWRITE);
         if (code == NULL) {
-            FreePointerList(blockedMemory);
+            freePointerList(blockedMemory);
             SetLastError(ERROR_OUTOFMEMORY);
             return NULL;
         }
@@ -506,7 +496,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     if (result == NULL) {
         VirtualFree(code, 0, MEM_RELEASE);
 #ifdef _WIN64
-        FreePointerList(blockedMemory);
+        freePointerList(blockedMemory);
 #endif
         SetLastError(ERROR_OUTOFMEMORY);
         return NULL;
@@ -713,7 +703,7 @@ void MemoryFreeLibrary(HMEMORYMODULE mod)
     }
 
 #ifdef _WIN64
-    FreePointerList(module->blockedMemory);
+    freePointerList(module->blockedMemory);
 #endif
     HeapFree(GetProcessHeap(), 0, module);
 }

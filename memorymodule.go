@@ -40,3 +40,14 @@ func alignValueUp(value C.size_t, alignment C.size_t) C.size_t {
 func offsetPointer(data unsafe.Pointer, offset uintptr) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(data) + offset)
 }
+
+//export freePointerList
+func freePointerList(head *C.POINTER_LIST) {
+	node := head
+	for node != nil {
+		C.VirtualFree(C.LPVOID(node.address), 0, C.MEM_RELEASE)
+		next := node.next
+		C.free(unsafe.Pointer(node))
+		node = next
+	}
+}
