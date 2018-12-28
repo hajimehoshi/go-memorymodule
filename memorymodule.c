@@ -71,11 +71,6 @@ typedef struct {
     BOOL initialized;
     BOOL isDLL;
     BOOL isRelocated;
-    CustomAllocFunc alloc;
-    CustomFreeFunc free;
-    CustomLoadLibraryFunc loadLibrary;
-    CustomGetProcAddressFunc getProcAddress;
-    CustomFreeLibraryFunc freeLibrary;
     struct ExportNameEntry *nameExportsTable;
     void *userdata;
     ExeEntryProc exeEntry;
@@ -159,7 +154,7 @@ CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_heade
             // uninitialized data
             section_size = old_headers->OptionalHeader.SectionAlignment;
             if (section_size > 0) {
-                dest = (unsigned char *)module->alloc(codeBase + section->VirtualAddress,
+                dest = (unsigned char *)MemoryDefaultAlloc(codeBase + section->VirtualAddress,
                     section_size,
                     MEM_COMMIT,
                     PAGE_READWRITE,
@@ -186,7 +181,7 @@ CopySections(const unsigned char *data, size_t size, PIMAGE_NT_HEADERS old_heade
         }
 
         // commit memory block and copy data from dll
-        dest = (unsigned char *)module->alloc(codeBase + section->VirtualAddress,
+        dest = (unsigned char *)MemoryDefaultAlloc(codeBase + section->VirtualAddress,
                             section->SizeOfRawData,
                             MEM_COMMIT,
                             PAGE_READWRITE,
@@ -252,7 +247,7 @@ FinalizeSection(PMEMORYMODULE module, PSECTIONFINALIZEDATA sectionData) {
              (sectionData->size % module->pageSize) == 0)
            ) {
             // Only allowed to decommit whole pages
-            module->free(sectionData->address, sectionData->size, MEM_DECOMMIT, module->userdata);
+            MemoryDefaultFree(sectionData->address, sectionData->size, MEM_DECOMMIT, module->userdata);
         }
         return TRUE;
     }
@@ -426,7 +421,7 @@ BuildImportTable(PMEMORYMODULE module)
         uintptr_t *thunkRef;
         FARPROC *funcRef;
         HCUSTOMMODULE *tmp;
-        HCUSTOMMODULE handle = module->loadLibrary((LPCSTR) (codeBase + importDesc->Name), module->userdata);
+        HCUSTOMMODULE handle = MemoryDefaultLoadLibrary((LPCSTR) (codeBase + importDesc->Name), module->userdata);
         if (handle == NULL) {
             SetLastError(ERROR_MOD_NOT_FOUND);
             result = FALSE;
@@ -435,7 +430,7 @@ BuildImportTable(PMEMORYMODULE module)
 
         tmp = (HCUSTOMMODULE *) realloc(module->modules, (module->numModules+1)*(sizeof(HCUSTOMMODULE)));
         if (tmp == NULL) {
-            module->freeLibrary(handle, module->userdata);
+            MemoryDefaultFreeLibrary(handle, module->userdata);
             SetLastError(ERROR_OUTOFMEMORY);
             result = FALSE;
             break;
@@ -453,10 +448,10 @@ BuildImportTable(PMEMORYMODULE module)
         }
         for (; *thunkRef; thunkRef++, funcRef++) {
             if (IMAGE_SNAP_BY_ORDINAL(*thunkRef)) {
-                *funcRef = module->getProcAddress(handle, (LPCSTR)IMAGE_ORDINAL(*thunkRef), module->userdata);
+                *funcRef = MemoryDefaultGetProcAddress(handle, (LPCSTR)IMAGE_ORDINAL(*thunkRef), module->userdata);
             } else {
                 PIMAGE_IMPORT_BY_NAME thunkData = (PIMAGE_IMPORT_BY_NAME) (codeBase + (*thunkRef));
-                *funcRef = module->getProcAddress(handle, (LPCSTR)&thunkData->Name, module->userdata);
+                *funcRef = MemoryDefaultGetProcAddress(handle, (LPCSTR)&thunkData->Name, module->userdata);
             }
             if (*funcRef == 0) {
                 result = FALSE;
@@ -465,7 +460,7 @@ BuildImportTable(PMEMORYMODULE module)
         }
 
         if (!result) {
-            module->freeLibrary(handle, module->userdata);
+            MemoryDefaultFreeLibrary(handle, module->userdata);
             SetLastError(ERROR_PROC_NOT_FOUND);
             break;
         }
@@ -511,17 +506,6 @@ void MemoryDefaultFreeLibrary(HCUSTOMMODULE module, void *userdata)
 }
 
 HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
-{
-    return MemoryLoadLibraryEx(data, size, MemoryDefaultAlloc, MemoryDefaultFree, MemoryDefaultLoadLibrary, MemoryDefaultGetProcAddress, MemoryDefaultFreeLibrary, NULL);
-}
-
-HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
-    CustomAllocFunc allocMemory,
-    CustomFreeFunc freeMemory,
-    CustomLoadLibraryFunc loadLibrary,
-    CustomGetProcAddressFunc getProcAddress,
-    CustomFreeLibraryFunc freeLibrary,
-    void *userdata)
 {
     PMEMORYMODULE result = NULL;
     PIMAGE_DOS_HEADER dos_header;
@@ -593,19 +577,19 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
     // reserve memory for image of library
     // XXX: is it correct to commit the complete memory region at once?
     //      calling DllEntry raises an exception if we don't...
-    code = (unsigned char *)allocMemory((LPVOID)(old_header->OptionalHeader.ImageBase),
+    code = (unsigned char *)MemoryDefaultAlloc((LPVOID)(old_header->OptionalHeader.ImageBase),
         alignedImageSize,
         MEM_RESERVE | MEM_COMMIT,
         PAGE_READWRITE,
-        userdata);
+        NULL);
 
     if (code == NULL) {
         // try to allocate memory at arbitrary position
-        code = (unsigned char *)allocMemory(NULL,
+        code = (unsigned char *)MemoryDefaultAlloc(NULL,
             alignedImageSize,
             MEM_RESERVE | MEM_COMMIT,
             PAGE_READWRITE,
-            userdata);
+            NULL);
         if (code == NULL) {
             SetLastError(ERROR_OUTOFMEMORY);
             return NULL;
@@ -617,8 +601,8 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
     while ((((uintptr_t) code) >> 32) < (((uintptr_t) (code + alignedImageSize)) >> 32)) {
         POINTER_LIST *node = (POINTER_LIST*) malloc(sizeof(POINTER_LIST));
         if (!node) {
-            freeMemory(code, 0, MEM_RELEASE, userdata);
-            FreePointerList(blockedMemory, freeMemory, userdata);
+            MemoryDefaultFree(code, 0, MEM_RELEASE, NULL);
+            FreePointerList(blockedMemory, MemoryDefaultFree, NULL);
             SetLastError(ERROR_OUTOFMEMORY);
             return NULL;
         }
@@ -627,13 +611,13 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
         node->address = code;
         blockedMemory = node;
 
-        code = (unsigned char *)allocMemory(NULL,
+        code = (unsigned char *)MemoryDefaultAlloc(NULL,
             alignedImageSize,
             MEM_RESERVE | MEM_COMMIT,
             PAGE_READWRITE,
-            userdata);
+            NULL);
         if (code == NULL) {
-            FreePointerList(blockedMemory, freeMemory, userdata);
+            FreePointerList(blockedMemory, MemoryDefaultFree, NULL);
             SetLastError(ERROR_OUTOFMEMORY);
             return NULL;
         }
@@ -642,9 +626,9 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
 
     result = (PMEMORYMODULE)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(MEMORYMODULE));
     if (result == NULL) {
-        freeMemory(code, 0, MEM_RELEASE, userdata);
+        MemoryDefaultFree(code, 0, MEM_RELEASE, NULL);
 #ifdef _WIN64
-        FreePointerList(blockedMemory, freeMemory, userdata);
+        FreePointerList(blockedMemory, MemoryDefaultFree, NULL);
 #endif
         SetLastError(ERROR_OUTOFMEMORY);
         return NULL;
@@ -652,12 +636,7 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
 
     result->codeBase = code;
     result->isDLL = (old_header->FileHeader.Characteristics & IMAGE_FILE_DLL) != 0;
-    result->alloc = allocMemory;
-    result->free = freeMemory;
-    result->loadLibrary = loadLibrary;
-    result->getProcAddress = getProcAddress;
-    result->freeLibrary = freeLibrary;
-    result->userdata = userdata;
+    result->userdata = NULL;
     result->pageSize = sysInfo.dwPageSize;
 #ifdef _WIN64
     result->blockedMemory = blockedMemory;
@@ -668,11 +647,11 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
     }
 
     // commit memory for headers
-    headers = (unsigned char *)allocMemory(code,
+    headers = (unsigned char *)MemoryDefaultAlloc(code,
         old_header->OptionalHeader.SizeOfHeaders,
         MEM_COMMIT,
         PAGE_READWRITE,
-        userdata);
+        NULL);
 
     // copy PE header to code
     memcpy(headers, dos_header, old_header->OptionalHeader.SizeOfHeaders);
@@ -847,7 +826,7 @@ void MemoryFreeLibrary(HMEMORYMODULE mod)
         int i;
         for (i=0; i<module->numModules; i++) {
             if (module->modules[i] != NULL) {
-                module->freeLibrary(module->modules[i], module->userdata);
+                MemoryDefaultFreeLibrary(module->modules[i], module->userdata);
             }
         }
 
@@ -856,11 +835,11 @@ void MemoryFreeLibrary(HMEMORYMODULE mod)
 
     if (module->codeBase != NULL) {
         // release memory of library
-        module->free(module->codeBase, 0, MEM_RELEASE, module->userdata);
+        MemoryDefaultFree(module->codeBase, 0, MEM_RELEASE, module->userdata);
     }
 
 #ifdef _WIN64
-    FreePointerList(module->blockedMemory, module->free, module->userdata);
+    FreePointerList(module->blockedMemory, MemoryDefaultFree, module->userdata);
 #endif
     HeapFree(GetProcessHeap(), 0, module);
 }
