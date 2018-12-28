@@ -39,11 +39,11 @@ typedef void *HCUSTOMMODULE;
 extern "C" {
 #endif
 
-typedef LPVOID (*CustomAllocFunc)(LPVOID, SIZE_T, DWORD, DWORD, void*);
-typedef BOOL (*CustomFreeFunc)(LPVOID, SIZE_T, DWORD, void*);
-typedef HCUSTOMMODULE (*CustomLoadLibraryFunc)(LPCSTR, void *);
-typedef FARPROC (*CustomGetProcAddressFunc)(HCUSTOMMODULE, LPCSTR, void *);
-typedef void (*CustomFreeLibraryFunc)(HCUSTOMMODULE, void *);
+typedef LPVOID (*CustomAllocFunc)(LPVOID, SIZE_T, DWORD, DWORD);
+typedef BOOL (*CustomFreeFunc)(LPVOID, SIZE_T, DWORD);
+typedef HCUSTOMMODULE (*CustomLoadLibraryFunc)(LPCSTR);
+typedef FARPROC (*CustomGetProcAddressFunc)(HCUSTOMMODULE, LPCSTR);
+typedef void (*CustomFreeLibraryFunc)(HCUSTOMMODULE);
 
 /**
  * Load EXE/DLL from memory location with the given size.
@@ -52,20 +52,6 @@ typedef void (*CustomFreeLibraryFunc)(HCUSTOMMODULE, void *);
  * calls through the Windows API.
  */
 HMEMORYMODULE MemoryLoadLibrary(const void *, size_t);
-
-/**
- * Load EXE/DLL from memory location with the given size using custom dependency
- * resolvers.
- *
- * Dependencies will be resolved using passed callback methods.
- */
-HMEMORYMODULE MemoryLoadLibraryEx(const void *, size_t,
-    CustomAllocFunc,
-    CustomFreeFunc,
-    CustomLoadLibraryFunc,
-    CustomGetProcAddressFunc,
-    CustomFreeLibraryFunc,
-    void *);
 
 /**
  * Get address of exported method. Supports loading both by name and by
@@ -127,7 +113,7 @@ int MemoryLoadStringEx(HMEMORYMODULE, UINT, LPTSTR, int, WORD);
 *
 * This is the default as used by MemoryLoadLibrary.
 */
-LPVOID MemoryDefaultAlloc(LPVOID, SIZE_T, DWORD, DWORD, void *);
+LPVOID MemoryDefaultAlloc(LPVOID, SIZE_T, DWORD, DWORD);
 
 /**
 * Default implementation of CustomFreeFunc that calls VirtualFree
@@ -135,7 +121,7 @@ LPVOID MemoryDefaultAlloc(LPVOID, SIZE_T, DWORD, DWORD, void *);
 *
 * This is the default as used by MemoryLoadLibrary.
 */
-BOOL MemoryDefaultFree(LPVOID, SIZE_T, DWORD, void *);
+BOOL MemoryDefaultFree(LPVOID, SIZE_T, DWORD);
 
 /**
  * Default implementation of CustomLoadLibraryFunc that calls LoadLibraryA
@@ -143,7 +129,7 @@ BOOL MemoryDefaultFree(LPVOID, SIZE_T, DWORD, void *);
  *
  * This is the default as used by MemoryLoadLibrary.
  */
-HCUSTOMMODULE MemoryDefaultLoadLibrary(LPCSTR, void *);
+HCUSTOMMODULE MemoryDefaultLoadLibrary(LPCSTR);
 
 /**
  * Default implementation of CustomGetProcAddressFunc that calls GetProcAddress
@@ -151,7 +137,7 @@ HCUSTOMMODULE MemoryDefaultLoadLibrary(LPCSTR, void *);
  *
  * This is the default as used by MemoryLoadLibrary.
  */
-FARPROC MemoryDefaultGetProcAddress(HCUSTOMMODULE, LPCSTR, void *);
+FARPROC MemoryDefaultGetProcAddress(HCUSTOMMODULE, LPCSTR);
 
 /**
  * Default implementation of CustomFreeLibraryFunc that calls FreeLibrary
@@ -159,7 +145,7 @@ FARPROC MemoryDefaultGetProcAddress(HCUSTOMMODULE, LPCSTR, void *);
  *
  * This is the default as used by MemoryLoadLibrary.
  */
-void MemoryDefaultFreeLibrary(HCUSTOMMODULE, void *);
+void MemoryDefaultFreeLibrary(HCUSTOMMODULE);
 
 #ifdef __cplusplus
 }
