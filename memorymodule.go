@@ -79,11 +79,10 @@ func copySections(data *C.uchar, size C.size_t, old_headers *C.IMAGE_NT_HEADERS,
 			// section doesn't contain data in the dll itself, but may define
 			// uninitialized data
 			if section_size := old_headers.OptionalHeader.SectionAlignment; section_size > 0 {
-				p, err := windows.VirtualAlloc(codeBase+uintptr(section.VirtualAddress),
+				if _, err := windows.VirtualAlloc(codeBase+uintptr(section.VirtualAddress),
 					uintptr(section_size),
 					windows.MEM_COMMIT,
-					windows.PAGE_READWRITE)
-				if p == 0 || err != nil && err.(windows.Errno) != 0 {
+					windows.PAGE_READWRITE); err != nil {
 					return C.FALSE
 				}
 
@@ -109,11 +108,10 @@ func copySections(data *C.uchar, size C.size_t, old_headers *C.IMAGE_NT_HEADERS,
 		}
 
 		// commit memory block and copy data from dll
-		p, err := windows.VirtualAlloc(codeBase+uintptr(section.VirtualAddress),
+		if _, err := windows.VirtualAlloc(codeBase+uintptr(section.VirtualAddress),
 			uintptr(section.SizeOfRawData),
 			windows.MEM_COMMIT,
-			windows.PAGE_READWRITE)
-		if p == 0 || err != nil && err.(windows.Errno) != 0 {
+			windows.PAGE_READWRITE); err != nil {
 			return C.FALSE
 		}
 
