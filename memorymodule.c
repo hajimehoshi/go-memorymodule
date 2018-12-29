@@ -65,6 +65,8 @@ IMAGE_SECTION_HEADER* imageFirstSection(IMAGE_NT_HEADERS*);
 
 BOOL copySections(const unsigned char *data, size_t size, IMAGE_NT_HEADERS* old_headers, MEMORYMODULE* module);
 
+size_t getRealSectionSize(MEMORYMODULE* module, IMAGE_SECTION_HEADER* section);
+
 // Protection flags for memory pages (Executable, Readable, Writeable)
 static int ProtectionFlags[2][2][2] = {
     {
@@ -77,19 +79,6 @@ static int ProtectionFlags[2][2][2] = {
         {PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE},
     },
 };
-
-static SIZE_T
-GetRealSectionSize(MEMORYMODULE* module, IMAGE_SECTION_HEADER* section) {
-    DWORD size = section->SizeOfRawData;
-    if (size == 0) {
-        if (section->Characteristics & IMAGE_SCN_CNT_INITIALIZED_DATA) {
-            size = module->headers->OptionalHeader.SizeOfInitializedData;
-        } else if (section->Characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA) {
-            size = module->headers->OptionalHeader.SizeOfUninitializedData;
-        }
-    }
-    return (SIZE_T) size;
-}
 
 static BOOL
 FinalizeSection(MEMORYMODULE* module, PSECTIONFINALIZEDATA sectionData) {
@@ -143,7 +132,7 @@ FinalizeSections(MEMORYMODULE* module)
     SECTIONFINALIZEDATA sectionData;
     sectionData.address = (void*)((uintptr_t)section->Misc.PhysicalAddress | imageOffset);
     sectionData.alignedAddress = alignAddressDown(sectionData.address, module->pageSize);
-    sectionData.size = GetRealSectionSize(module, section);
+    sectionData.size = getRealSectionSize(module, section);
     sectionData.characteristics = section->Characteristics;
     sectionData.last = FALSE;
     section++;
@@ -152,7 +141,7 @@ FinalizeSections(MEMORYMODULE* module)
     for (int i=1; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
         void* sectionAddress = (void*)((uintptr_t)section->Misc.PhysicalAddress | imageOffset);
         void* alignedAddress = alignAddressDown(sectionAddress, module->pageSize);
-        SIZE_T sectionSize = GetRealSectionSize(module, section);
+        SIZE_T sectionSize = getRealSectionSize(module, section);
         // Combine access flags of all sections that share a page
         // TODO(fancycode): We currently share flags of a trailing large section
         //   with the page of a first small section. This should be optimized.

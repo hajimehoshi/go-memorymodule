@@ -131,3 +131,17 @@ func copySections(data *C.uchar, size C.size_t, old_headers *C.IMAGE_NT_HEADERS,
 	}
 	return C.TRUE
 }
+
+//export getRealSectionSize
+func getRealSectionSize(module *C.MEMORYMODULE, section *C.IMAGE_SECTION_HEADER) C.size_t {
+	if section.SizeOfRawData != 0 {
+		return C.size_t(section.SizeOfRawData)
+	}
+	if section.Characteristics&C.IMAGE_SCN_CNT_INITIALIZED_DATA != 0 {
+		return C.size_t(module.headers.OptionalHeader.SizeOfInitializedData)
+	}
+	if section.Characteristics&C.IMAGE_SCN_CNT_UNINITIALIZED_DATA != 0 {
+		return C.size_t(module.headers.OptionalHeader.SizeOfUninitializedData)
+	}
+	return 0
+}
