@@ -170,12 +170,10 @@ struct ExportNameEntry {
 typedef BOOL (WINAPI *DllEntryProc)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved);
 typedef int (WINAPI *ExeEntryProc)(void);
 
-#ifdef _WIN64
 typedef struct POINTER_LIST {
     struct POINTER_LIST *next;
     void *address;
 } POINTER_LIST;
-#endif
 
 typedef struct {
     PIMAGE_NT_HEADERS headers;

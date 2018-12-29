@@ -245,9 +245,6 @@ BuildImportTable(MEMORYMODULE* module)
 HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
 {
     MEMORYMODULE* result = NULL;
-#ifdef _WIN64
-    POINTER_LIST *blockedMemory = NULL;
-#endif
 
     if (!checkSize(size, sizeof(IMAGE_DOS_HEADER))) {
         return NULL;
@@ -324,6 +321,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     }
 
 #ifdef _WIN64
+    POINTER_LIST *blockedMemory = NULL;
     // Memory block may not span 4 GB boundaries.
     while ((((uintptr_t) code) >> 32) < (((uintptr_t) (code + alignedImageSize)) >> 32)) {
         POINTER_LIST *node = (POINTER_LIST*) malloc(sizeof(POINTER_LIST));
