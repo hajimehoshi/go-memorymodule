@@ -145,3 +145,56 @@ func getRealSectionSize(module *C.MEMORYMODULE, section *C.IMAGE_SECTION_HEADER)
 	}
 	return 0
 }
+
+const pageExecute = 0x10
+
+// protectionFlags is protection flags for memory pages (Executable, Readable, Writeable)
+var protectionFlags = map[bool]map[bool]map[bool]uint32{
+	false: {
+		// not executable
+		false: {false: windows.PAGE_NOACCESS, true: windows.PAGE_WRITECOPY},
+		true:  {false: windows.PAGE_READONLY, true: windows.PAGE_READWRITE},
+	},
+	true: {
+		// executable
+		false: {false: pageExecute, true: windows.PAGE_EXECUTE_WRITECOPY},
+		true:  {false: windows.PAGE_EXECUTE_READ, true: windows.PAGE_EXECUTE_READWRITE},
+	},
+}
+
+//export finalizeSection
+func finalizeSection(module *C.MEMORYMODULE, sectionData *C.SECTIONFINALIZEDATA) C.BOOL {
+	if sectionData.size == 0 {
+		return C.TRUE
+	}
+
+	if sectionData.characteristics&C.IMAGE_SCN_MEM_DISCARDABLE != 0 {
+		// section is not needed any more and can safely be freed
+		if sectionData.address == sectionData.alignedAddress &&
+			(sectionData.last != 0 ||
+				module.headers.OptionalHeader.SectionAlignment == module.pageSize ||
+				uint(sectionData.size)%uint(module.pageSize) == 0) {
+			// Only allowed to decommit whole pages
+			windows.VirtualFree(uintptr(sectionData.address), uintptr(sectionData.size), windows.MEM_DECOMMIT)
+		}
+		return C.TRUE
+	}
+
+	// determine protection flags based on characteristics
+	executable := (sectionData.characteristics & C.IMAGE_SCN_MEM_EXECUTE) != 0
+	readable := (sectionData.characteristics & C.IMAGE_SCN_MEM_READ) != 0
+	writeable := (sectionData.characteristics & C.IMAGE_SCN_MEM_WRITE) != 0
+	protect := protectionFlags[executable][readable][writeable]
+	if sectionData.characteristics&C.IMAGE_SCN_MEM_NOT_CACHED != 0 {
+		protect |= C.PAGE_NOCACHE
+	}
+
+	// change memory access flags
+	var oldProtect uint32
+	if err := windows.VirtualProtect(uintptr(sectionData.address), uintptr(sectionData.size), protect, &oldProtect); err != nil {
+		// OutputLastError("Error protecting memory page");
+		return C.FALSE
+	}
+
+	return C.TRUE
+}

@@ -67,56 +67,7 @@ BOOL copySections(const unsigned char *data, size_t size, IMAGE_NT_HEADERS* old_
 
 size_t getRealSectionSize(MEMORYMODULE* module, IMAGE_SECTION_HEADER* section);
 
-// Protection flags for memory pages (Executable, Readable, Writeable)
-static int ProtectionFlags[2][2][2] = {
-    {
-        // not executable
-        {PAGE_NOACCESS, PAGE_WRITECOPY},
-        {PAGE_READONLY, PAGE_READWRITE},
-    }, {
-        // executable
-        {PAGE_EXECUTE, PAGE_EXECUTE_WRITECOPY},
-        {PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE},
-    },
-};
-
-static BOOL
-FinalizeSection(MEMORYMODULE* module, PSECTIONFINALIZEDATA sectionData) {
-    if (sectionData->size == 0) {
-        return TRUE;
-    }
-
-    if (sectionData->characteristics & IMAGE_SCN_MEM_DISCARDABLE) {
-        // section is not needed any more and can safely be freed
-        if (sectionData->address == sectionData->alignedAddress &&
-            (sectionData->last ||
-             module->headers->OptionalHeader.SectionAlignment == module->pageSize ||
-             (sectionData->size % module->pageSize) == 0)
-           ) {
-            // Only allowed to decommit whole pages
-            VirtualFree(sectionData->address, sectionData->size, MEM_DECOMMIT);
-        }
-        return TRUE;
-    }
-
-    // determine protection flags based on characteristics
-    BOOL executable = (sectionData->characteristics & IMAGE_SCN_MEM_EXECUTE) != 0;
-    BOOL readable =   (sectionData->characteristics & IMAGE_SCN_MEM_READ) != 0;
-    BOOL writeable =  (sectionData->characteristics & IMAGE_SCN_MEM_WRITE) != 0;
-    DWORD protect = ProtectionFlags[executable][readable][writeable];
-    if (sectionData->characteristics & IMAGE_SCN_MEM_NOT_CACHED) {
-        protect |= PAGE_NOCACHE;
-    }
-
-    // change memory access flags
-    DWORD oldProtect;
-    if (VirtualProtect(sectionData->address, sectionData->size, protect, &oldProtect) == 0) {
-        // OutputLastError("Error protecting memory page");
-        return FALSE;
-    }
-
-    return TRUE;
-}
+BOOL finalizeSection(MEMORYMODULE* module, SECTIONFINALIZEDATA* sectionData);
 
 static BOOL
 FinalizeSections(MEMORYMODULE* module)
@@ -156,7 +107,7 @@ FinalizeSections(MEMORYMODULE* module)
             continue;
         }
 
-        if (!FinalizeSection(module, &sectionData)) {
+        if (!finalizeSection(module, &sectionData)) {
             return FALSE;
         }
         sectionData.address = sectionAddress;
@@ -165,7 +116,7 @@ FinalizeSections(MEMORYMODULE* module)
         sectionData.characteristics = section->Characteristics;
     }
     sectionData.last = TRUE;
-    if (!FinalizeSection(module, &sectionData)) {
+    if (!finalizeSection(module, &sectionData)) {
         return FALSE;
     }
     return TRUE;
