@@ -63,60 +63,7 @@ BOOL checkSize(size_t size, size_t expected);
 
 IMAGE_SECTION_HEADER* imageFirstSection(IMAGE_NT_HEADERS*);
 
-static BOOL
-CopySections(const unsigned char *data, size_t size, IMAGE_NT_HEADERS* old_headers, MEMORYMODULE* module)
-{
-    unsigned char* codeBase = module->codeBase;
-    IMAGE_SECTION_HEADER* section = imageFirstSection(module->headers);
-    for (int i=0; i<module->headers->FileHeader.NumberOfSections; i++, section++) {
-        if (section->SizeOfRawData == 0) {
-            // section doesn't contain data in the dll itself, but may define
-            // uninitialized data
-            int section_size = old_headers->OptionalHeader.SectionAlignment;
-            if (section_size > 0) {
-                if (!VirtualAlloc(codeBase + section->VirtualAddress,
-                    section_size,
-                    MEM_COMMIT,
-                    PAGE_READWRITE)) {
-                    return FALSE;
-                }
-
-                // Always use position from file to support alignments smaller
-                // than page size (allocation above will align to page size).
-                unsigned char* dest = codeBase + section->VirtualAddress;
-                // NOTE: On 64bit systems we truncate to 32bit here but expand
-                // again later when "PhysicalAddress" is used.
-                section->Misc.PhysicalAddress = (DWORD) ((uintptr_t)(dest) & 0xffffffff);
-                memset(dest, 0, section_size);
-            }
-
-            // section is empty
-            continue;
-        }
-
-        if (!checkSize(size, section->PointerToRawData + section->SizeOfRawData)) {
-            return FALSE;
-        }
-
-        // commit memory block and copy data from dll
-        if (!VirtualAlloc(codeBase + section->VirtualAddress,
-                            section->SizeOfRawData,
-                            MEM_COMMIT,
-                            PAGE_READWRITE)) {
-            return FALSE;
-        }
-
-        // Always use position from file to support alignments smaller
-        // than page size (allocation above will align to page size).
-        unsigned char* dest = codeBase + section->VirtualAddress;
-        memcpy(dest, data + section->PointerToRawData, section->SizeOfRawData);
-        // NOTE: On 64bit systems we truncate to 32bit here but expand
-        // again later when "PhysicalAddress" is used.
-        section->Misc.PhysicalAddress = (DWORD) ((uintptr_t) dest & 0xffffffff);
-    }
-
-    return TRUE;
-}
+BOOL copySections(const unsigned char *data, size_t size, IMAGE_NT_HEADERS* old_headers, MEMORYMODULE* module);
 
 // Protection flags for memory pages (Executable, Readable, Writeable)
 static int ProtectionFlags[2][2][2] = {
@@ -498,7 +445,7 @@ HMEMORYMODULE MemoryLoadLibrary(const void *data, size_t size)
     result->headers->OptionalHeader.ImageBase = (uintptr_t)code;
 
     // copy sections from DLL file block to new memory location
-    if (!CopySections((const unsigned char *) data, size, old_header, result)) {
+    if (!copySections((const unsigned char *) data, size, old_header, result)) {
         goto error;
     }
 
